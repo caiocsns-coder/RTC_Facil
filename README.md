@@ -7,7 +7,7 @@ da reforma numa NFS-e estão coerentes entre si.
 
 ## Demo
 
-👉 **[Abrir o RTC Fácil](#)** — *(substitua pelo link do GitHub Pages depois de publicar)*
+👉 **[Abrir o RTC Fácil](https://caiocsns-coder.github.io/RTC_Facil/)**
 
 ## O que ele faz
 
