@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RTC Fácil — correlação Item LC 116 × NBS × cClassTrib e validação de NFS-e</title>
+<meta name="description" content="Consulte a correlação oficial entre item da LC 116, NBS, INDOP e cClassTrib do Anexo VIII da Reforma Tributária, e valide se os campos de uma NFS-e estão coerentes — tudo direto no navegador.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="marca">
+      <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="16" cy="16" r="13" stroke="#F2F0EA" stroke-width="2"/>
+        <path d="M10.5 16.5L14 20L21.5 11.5" stroke="#B5562E" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>RTC Fácil</span>
+    </div>
+    <h1>Reforma Tributária do Consumo, sem adivinhação.</h1>
+    <p class="sub">Correlação oficial Item LC 116 × NBS × INDOP × cClassTrib/CST do Anexo VIII, com fundamentação legal completa — e um validador que confere se os campos da reforma numa NFS-e estão coerentes entre si.</p>
+    <div class="hero-fatos">
+      <div class="hero-fato"><span class="num" id="total-itens">—</span><span class="rotulo">itens da LC 116</span></div>
+      <div class="hero-fato"><span class="num" id="total-nbs">—</span><span class="rotulo">códigos NBS</span></div>
+      <div class="hero-fato"><span class="num" id="total-cclass">—</span><span class="rotulo">cClassTrib distintos</span></div>
+      <div class="hero-fato"><span class="num" id="total-cst">—</span><span class="rotulo">CSTs (IBS/CBS)</span></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="ferramenta-card">
+    <nav class="tabs">
+      <button type="button" data-painel="painel-consulta" class="ativa">Consultar combinações</button>
+      <button type="button" data-painel="painel-xml">Validar XML de NFS-e</button>
+    </nav>
+
+    <section id="painel-consulta" class="painel ativo">
+      <p class="fonte-linha">Fonte: Anexo VIII — correlação Item NBS INDOP cClassTrib (IBS/CBS), v1.01.00, e fundamentações legais oficiais (LC 214/2025). CST = 3 primeiros dígitos do cClassTrib.</p>
+
+      <div class="campo">
+        <label for="busca-item">Item da LC 116 (código do serviço ISS)</label>
+        <input type="text" id="busca-item" autocomplete="off" placeholder="Digite o código (ex.: 01.07) ou parte da descrição">
+        <div id="sugestoes-item" class="sugestoes" hidden></div>
+      </div>
+      <button type="button" id="botao-cst" class="link-discreto">Ver tabela de CST (IBS/CBS)</button>
+      <div id="painel-cst" hidden></div>
+
+      <div id="resultado"></div>
+    </section>
+
+    <section id="painel-xml" class="painel">
+      <p class="fonte-linha">Confere se os campos da Reforma Tributária (cTribNac, NBS, INDOP, CST, cClassTrib) num XML de NFS-e (padrão nacional) são coerentes com o Anexo VIII. Todo o processamento acontece no seu navegador — nada é enviado a servidor nenhum. Não calcula nem confirma valores de IBS/CBS — isso só a calculadora oficial faz.</p>
+
+      <div class="campo">
+        <label for="arquivo-xml">Arquivo XML da NFS-e</label>
+        <input type="file" id="arquivo-xml" accept=".xml">
+      </div>
+      <p class="ou-separador">ou cole o XML abaixo</p>
+      <div class="campo">
+        <textarea id="texto-xml" rows="6" placeholder="Cole aqui o conteúdo do XML..."></textarea>
+      </div>
+      <button type="button" id="botao-validar-xml" class="botao-primario">Validar</button>
+
+      <div id="resultado-xml"></div>
+    </section>
+  </div>
+</main>
+
+<footer class="rodape wrap">
+  <span>Dados do Anexo VIII da Reforma Tributária (correlação Item LC 116 × NBS × INDOP × cClassTrib) — <a href="https://www.gov.br/nfse" target="_blank" rel="noopener">gov.br/nfse</a>.</span>
+  <span>RTC Fácil não tem vínculo com a Receita Federal; para uso fiscal, confirme sempre na fonte oficial e na calculadora oficial de tributos.</span>
+</footer>
+
+<script src="assets/dados.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
