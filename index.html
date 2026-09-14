@@ -47,8 +47,18 @@
         <input type="text" id="busca-item" autocomplete="off" placeholder="Digite o código (ex.: 01.07) ou parte da descrição">
         <div id="sugestoes-item" class="sugestoes" hidden></div>
       </div>
+
+      <p class="ou-separador">ou busque diretamente pelo código NBS</p>
+      <div class="campo">
+        <label for="busca-nbs">Código NBS</label>
+        <input type="text" id="busca-nbs" autocomplete="off" placeholder="Digite o código (ex.: 1.0102.90.00) ou parte da descrição">
+        <div id="sugestoes-nbs" class="sugestoes" hidden></div>
+      </div>
+
       <button type="button" id="botao-cst" class="link-discreto">Ver tabela de CST (IBS/CBS)</button>
       <div id="painel-cst" hidden></div>
+      <button type="button" id="botao-regimes" class="link-discreto">Ver regimes especiais que exigem tributação regular</button>
+      <div id="painel-regimes" class="painel-cst" hidden></div>
 
       <div id="resultado"></div>
     </section>

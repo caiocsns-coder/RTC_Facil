@@ -22,6 +22,55 @@ function simNao(v) {
   return v ? '<span class="selo-flag sim">Sim</span>' : '<span class="selo-flag nao">Não</span>';
 }
 
+// Alíquotas de referência nacionais vigentes em 2026 (ano-teste da Reforma —
+// vêm direto da tabela ALIQUOTA_REFERENCIA do banco oficial da calculadora).
+// A partir de 2027 este mecanismo muda (entram alíquotas por UF/Município e o
+// campo aliquotasNominais no payload) — esta estimativa vale só para 2026.
+const ALIQUOTA_REFERENCIA_2026 = { cbs: 0.9, ibsUf: 0.1, ibsMun: 0.0, vigenciaInicio: '2026-01-01', vigenciaFim: '2026-12-31' };
+const TIPOS_ALIQUOTA_ESTIMAVEIS = ['Padrão', 'Uniforme nacional (referência)', 'Sem alíquota'];
+
+function estimarAliquota(op) {
+  if (!op || !TIPOS_ALIQUOTA_ESTIMAVEIS.includes(op.tipoAliquota)) {
+    return { computavel: false, motivo: op ? op.tipoAliquota : null };
+  }
+  if (op.tipoAliquota === 'Sem alíquota') {
+    return { computavel: true, cbs: 0, ibsUf: 0, ibsMun: 0 };
+  }
+  const r = ALIQUOTA_REFERENCIA_2026;
+  return {
+    computavel: true,
+    cbs: r.cbs * (1 - (op.reducaoCbs || 0) / 100),
+    ibsUf: r.ibsUf * (1 - (op.reducaoIbsUf || 0) / 100),
+    ibsMun: r.ibsMun * (1 - (op.reducaoIbsMun || 0) / 100),
+  };
+}
+
+function formatarPct(v) {
+  return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) + '%';
+}
+
+function renderEstimativaAliquota(op, baseCalculo) {
+  const est = estimarAliquota(op);
+  let html = '<div class="estimativa-caixa">';
+  if (!est.computavel) {
+    html += '<div class="estimativa-titulo">Estimativa de alíquota efetiva (2026)</div>';
+    html += '<div class="estimativa-indisponivel">Tipo de alíquota "' + (est.motivo || '—') + '" não segue a fórmula simples de alíquota de referência × redução — não estimamos aqui pra não arriscar um número errado. Use a calculadora oficial.</div>';
+  } else {
+    const total = est.cbs + est.ibsUf + est.ibsMun;
+    html += '<div class="estimativa-titulo">Estimativa de alíquota efetiva — 2026 <span class="estimativa-selo">alíquotas de teste</span></div>';
+    html += '<div class="estimativa-linha">CBS ' + formatarPct(est.cbs) + ' · IBS-UF ' + formatarPct(est.ibsUf) + ' · IBS-Mun ' + formatarPct(est.ibsMun) + ' <strong>(total ' + formatarPct(total) + ')</strong></div>';
+    if (baseCalculo && !isNaN(parseFloat(baseCalculo))) {
+      const bc = parseFloat(baseCalculo);
+      const vCbs = bc * est.cbs / 100, vIbsUf = bc * est.ibsUf / 100, vIbsMun = bc * est.ibsMun / 100;
+      const fmt = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      html += '<div class="estimativa-linha">Sobre R$ ' + bc.toLocaleString('pt-BR', {minimumFractionDigits:2}) + ': CBS ' + fmt(vCbs) + ' · IBS-UF ' + fmt(vIbsUf) + ' · IBS-Mun ' + fmt(vIbsMun) + ' <strong>(total ' + fmt(vCbs+vIbsUf+vIbsMun) + ')</strong></div>';
+    }
+    html += '<div class="estimativa-nota">Estimativa própria (referência × redução), não é a calculadora oficial — as alíquotas de referência de 2026 ainda são de teste/calibração, e a partir de 2027 o mecanismo muda. Confirme sempre na calculadora oficial antes de usar em produção.</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
 function renderOperacional(op) {
   if (!op) return '';
   let html = '<div class="op-grid">';
@@ -45,15 +94,16 @@ function renderPayload(itemCodigo, nbsCodigo, cst, cclasstrib, chave) {
   const payloadObj = {
     id: '<gerar-id-unico>',
     versao: '0.0.1',
-    dataHoraEmissao: '<AAAA-MM-DDThh:mm:ss-03:00>',
+    dhFatoGerador: '<AAAA-MM-DDThh:mm:ss-03:00>',
     municipio: '<codigo IBGE do municipio>',
     uf: '<UF>',
+    tpDoc: 91,
     itens: [{ numero: 1, nbs: nbsCodigo, cst: cst, baseCalculo: '<valor da operacao>', quantidade: 1, unidade: 'UN', cClassTrib: cclasstrib }],
   };
   const json = JSON.stringify(payloadObj, null, 2);
   let html = '<div class="payload-bloco">';
   html += '<h4>Payload de teste — POST /calculadora/regime-geral</h4>';
-  html += '<p class="payload-nota">Referente ao item ' + itemCodigo + ' / NBS ' + nbsCodigo + '. Adaptado do schema oficial: o campo <code>ncm</code> da documentação foi trocado por <code>nbs</code>, já que este é um item de serviço — confirme o nome exato do campo na documentação da calculadora offline que você instalar. Preencha os campos entre &lt; &gt; antes de enviar.</p>';
+  html += '<p class="payload-nota">Referente ao item ' + itemCodigo + ' / NBS ' + nbsCodigo + '. Campo <code>nbs</code> confirmado no schema oficial (não é adaptação). <code>tpDoc: 91</code> = NFS-e. Preencha os campos entre &lt; &gt; antes de enviar. <strong>Atenção:</strong> para fato gerador a partir de 01/01/2027, o schema passa a exigir também o campo <code>aliquotasNominais</code> (cbs, ibsEstadual, ibsMunicipal) — sem ele a calculadora rejeita a requisição.</p>';
   html += '<pre class="payload-json" id="payload-' + chave + '">' + json.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>';
   html += '<button type="button" class="botao-copiar" data-chave="' + chave + '">Copiar JSON</button>';
   html += '</div>';
@@ -108,6 +158,7 @@ function renderItem(i) {
       html += '<tr class="linha-fundamento oculta" data-chave="' + chave + '"><td colspan="4">';
       html += '<div class="fundamento-caixa">';
       if (fund) {
+        html += renderEstimativaAliquota(fund.operacional, null);
         html += renderOperacional(fund.operacional);
         html += '<div class="fundamento-trilha">' + fund.referencia.join(' › ') + '</div>';
         html += '<div class="fundamento-texto">' + fund.texto.replace(/\n/g, '<br>') + '</div>';
@@ -129,6 +180,72 @@ function renderItem(i) {
     el.addEventListener('click', (ev) => {
       ev.stopPropagation();
       alvo.querySelector('.linha-fundamento[data-chave="' + el.dataset.chave + '"]').classList.toggle('oculta');
+    });
+  });
+  ativarCopiar(alvo);
+}
+
+function renderNbs(codigo, descricaoNbs) {
+  const alvo = document.getElementById('resultado');
+  const entradas = NBS_INDEX[codigo];
+  if (!entradas || entradas.length === 0) {
+    alvo.innerHTML = '<div class="aviso-vazio">Esse NBS não está correlacionado a nenhum item da LC 116 na nossa base.</div>';
+    return;
+  }
+
+  let html = '<div class="resultado-cabecalho"><span class="tag-item">' + codigo + '</span><h2>' + descricaoNbs + '</h2></div>';
+  html += '<p class="contagem-nbs">' + entradas.length + ' item(ns) da LC 116 associados</p>';
+
+  entradas.forEach((e, idx) => {
+    const csts = [...new Set(e.classificacoes.map(c => c.cst))];
+    html += '<div class="nbs-card">';
+    html += '<div class="nbs-cabecalho" data-idxnbs="' + idx + '">';
+    html += '<span class="nbs-cod">' + e.item + '</span>';
+    html += '<span class="nbs-desc">' + e.itemDescricao + '</span>';
+    html += '<span class="nbs-resumo">' + csts.map(cstBadge).join(' ') + '</span>';
+    html += '</div>';
+
+    html += '<div class="nbs-detalhe" data-idxnbs="' + idx + '">';
+    html += '<h4>Cenários de incidência (INDOP)</h4>';
+    html += '<table class="mini"><thead><tr><th>P/S onerosa</th><th>Adq. exterior</th><th>INDOP</th><th>Local de incidência (IBS)</th></tr></thead><tbody>';
+    e.cenarios.forEach(c => {
+      html += '<tr><td>' + flagSelo(c.psOnerosa) + '</td><td>' + flagSelo(c.adqExterior) + '</td><td>' + (c.indop || '—') + '</td><td>' + (c.local || '—') + '</td></tr>';
+    });
+    html += '</tbody></table>';
+
+    html += '<h4>Classificações tributárias (cClassTrib)</h4>';
+    html += '<table class="mini"><thead><tr><th>cClassTrib</th><th>CST</th><th>Descrição</th><th>Detalhes</th></tr></thead><tbody>';
+    e.classificacoes.forEach((c, cidx) => {
+      const fund = FUNDAMENTACAO[c.cclasstrib];
+      const chave = 'nbs' + idx + '-' + cidx;
+      const rotulo = fund ? fund.textoCurto : 'ver payload';
+      html += '<tr><td>' + c.cclasstrib + '</td><td>' + cstBadge(c.cst) + '</td><td>' + (c.nome || '—') + '</td><td><span class="link-fundamento" data-chavenbs="' + chave + '">' + rotulo + '</span></td></tr>';
+
+      html += '<tr class="linha-fundamento oculta" data-chavenbs="' + chave + '"><td colspan="4">';
+      html += '<div class="fundamento-caixa">';
+      if (fund) {
+        html += renderEstimativaAliquota(fund.operacional, null);
+        html += renderOperacional(fund.operacional);
+        html += '<div class="fundamento-trilha">' + fund.referencia.join(' › ') + '</div>';
+        html += '<div class="fundamento-texto">' + fund.texto.replace(/\n/g, '<br>') + '</div>';
+      }
+      html += renderPayload(e.item, codigo, c.cst, c.cclasstrib, chave);
+      html += '</div></td></tr>';
+    });
+    html += '</tbody></table>';
+    html += '</div></div>';
+  });
+
+  alvo.innerHTML = html;
+  alvo.querySelectorAll('.nbs-cabecalho').forEach(el => {
+    el.addEventListener('click', () => {
+      alvo.querySelector('.nbs-detalhe[data-idxnbs="' + el.dataset.idxnbs + '"]').classList.toggle('aberto');
+    });
+  });
+  alvo.querySelectorAll('.link-fundamento').forEach(el => {
+    el.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      alvo.querySelector('.linha-fundamento[data-chavenbs="' + el.dataset.chavenbs + '"]').classList.toggle('oculta');
     });
   });
   ativarCopiar(alvo);
@@ -242,6 +359,8 @@ function processarXml(texto) {
     html += renderChecagem('alerta', 'INDOP ' + cIndOp + ' — não deu pra verificar', 'Só valido o INDOP quando o NBS bate com o item (ver checagem acima).');
   }
 
+  const fundPrincipalPrevia = cClassTrib ? FUNDAMENTACAO[cClassTrib] : null;
+  const exigeDesoneracao = !!(fundPrincipalPrevia && fundPrincipalPrevia.operacional.exigeDesoneracao);
   const cclassParaComparar = cClassTribReg || cClassTrib;
   if (!cClassTrib) {
     html += renderChecagem('erro', 'cClassTrib não encontrado no XML', 'Não achei a tag &lt;cClassTrib&gt; dentro de &lt;gIBSCBS&gt;.');
@@ -252,8 +371,16 @@ function processarXml(texto) {
       html += renderChecagem('ok', 'CST ' + CST + ' é coerente com o cClassTrib ' + cClassTrib, '');
     }
 
-    if (cClassTribReg) {
-      html += renderChecagem('alerta', 'Regime especial detectado: cClassTrib ' + cClassTrib + ' (CST ' + CST + ')', 'Existe um &lt;gTribRegular&gt; no XML, indicando que a classificação "de cima" é um regime especial (suspensão, diferimento etc). A classificação regular por trás é ' + cClassTribReg + ' (CST ' + CSTReg + ') — é ela que comparo com o Anexo VIII abaixo.');
+    if (exigeDesoneracao && !cClassTribReg) {
+      html += renderChecagem('erro', 'Falta o grupo de tributação regular (gTribRegular)', 'O cClassTrib ' + cClassTrib + ' (' + (fundPrincipalPrevia ? fundPrincipalPrevia.operacional.tratamento : '') + ') exige informar a tributação regular — sem isso, a calculadora oficial rejeitaria essa nota com o erro "tributação regular não informada". Confira com o emissor.');
+    } else if (exigeDesoneracao && cClassTribReg) {
+      html += renderChecagem('ok', 'Regime especial com desoneração — gTribRegular informado corretamente', 'cClassTrib ' + cClassTrib + ' (CST ' + CST + ') exige a tributação regular, e ela veio: ' + cClassTribReg + ' (CST ' + CSTReg + ') — é essa que comparo com o Anexo VIII abaixo.');
+      const fundRegular = FUNDAMENTACAO[cClassTribReg];
+      if (fundRegular && fundRegular.operacional.incompativelSuspensao) {
+        html += renderChecagem('erro', 'Classificação regular incompatível com suspensão', 'A tributação regular informada (' + cClassTribReg + ') é ela mesma marcada como incompatível com suspensão/desoneração — essa combinação seria rejeitada pela calculadora oficial.');
+      }
+    } else if (!exigeDesoneracao && cClassTribReg) {
+      html += renderChecagem('alerta', 'gTribRegular informado, mas não é obrigatório para ' + cClassTrib, 'Não é erro — a calculadora aceita, só não exige nesse caso. Comparando ' + cClassTribReg + ' com o Anexo VIII mesmo assim.');
     }
 
     if (nbsEntradaCorrespondente) {
@@ -269,22 +396,27 @@ function processarXml(texto) {
     if (fundPrincipal) {
       html += '<div class="fundamento-caixa" style="margin-top:10px;">';
       html += '<div class="check-titulo" style="margin-bottom:8px;">Fundamentação do cClassTrib ' + cClassTrib + '</div>';
+      html += renderEstimativaAliquota(fundPrincipal.operacional, vBC || vServ);
       html += renderOperacional(fundPrincipal.operacional);
       html += '<div class="fundamento-trilha">' + fundPrincipal.referencia.join(' › ') + '</div>';
       html += '<div class="fundamento-texto">' + fundPrincipal.texto.replace(/\n/g, '<br>') + '</div>';
       html += '</div>';
     } else {
-      html += renderChecagem('alerta', 'cClassTrib ' + cClassTrib + ' não encontrado no nosso catálogo de fundamentações (161 códigos)', 'Pode ser um código muito recente ou uma divergência de digitação.');
+      html += renderChecagem('alerta', 'cClassTrib ' + cClassTrib + ' não encontrado no nosso catálogo de fundamentações (109 códigos)', 'Pode ser um código muito recente ou uma divergência de digitação.');
     }
   }
 
   if (cClassTrib) {
+    const anoFatoGerador = dhEmi ? parseInt(dhEmi.substring(0, 4), 10) : null;
+    const exigeAliquotasNominais = anoFatoGerador !== null && anoFatoGerador >= 2027;
+
     const payloadObj = {
       id: infNFSe.getAttribute('Id') || '<gerar-id-unico>',
       versao: '0.0.1',
-      dataHoraEmissao: dhEmi || '<AAAA-MM-DDThh:mm:ss-03:00>',
+      dhFatoGerador: dhEmi || '<AAAA-MM-DDThh:mm:ss-03:00>',
       municipio: cLocPrestacao || '<codigo IBGE do municipio>',
       uf: '<UF>',
+      tpDoc: 91,
       itens: [{
         numero: 1,
         nbs: nbsFormatado || '<NBS>',
@@ -294,12 +426,17 @@ function processarXml(texto) {
         unidade: 'UN',
         cClassTrib: cClassTrib,
         ...(cClassTribReg ? { tributacaoRegular: { cst: CSTReg, cClassTrib: cClassTribReg } } : {}),
+        ...(exigeAliquotasNominais ? { aliquotasNominais: { cbs: '<aliquota nominal CBS %>', ibsEstadual: '<aliquota nominal IBS-UF %>', ibsMunicipal: '<aliquota nominal IBS-Mun %>' } } : {}),
       }],
     };
     const json = JSON.stringify(payloadObj, null, 2);
     html += '<div class="payload-bloco">';
     html += '<h4>Payload de teste — POST /calculadora/regime-geral</h4>';
-    html += '<p class="payload-nota">Montado com os valores reais deste XML — reflete exatamente o que está na nota, inclusive se for regime especial. O campo <code>uf</code> não vem explícito no XML nessa forma — preencha antes de enviar. Confirme o nome exato dos campos na documentação da calculadora offline que você instalar.</p>';
+    html += '<p class="payload-nota">Montado com os valores reais deste XML — reflete exatamente o que está na nota, inclusive se for regime especial. O campo <code>uf</code> não vem explícito no XML nessa forma — preencha antes de enviar. <code>tpDoc: 91</code> = NFS-e. '
+      + (exigeAliquotasNominais
+        ? 'Fato gerador em ' + anoFatoGerador + ' — incluí <code>aliquotasNominais</code>, obrigatório a partir de 01/01/2027; preencha os valores reais antes de enviar.'
+        : 'Fato gerador em ' + (anoFatoGerador || '?') + ' — <code>aliquotasNominais</code> não se aplica ainda (só passa a ser exigido a partir de 01/01/2027).')
+      + '</p>';
     html += '<pre class="payload-json" id="payload-xml">' + json.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>';
     html += '<button type="button" class="botao-copiar" data-chave="xml">Copiar JSON</button>';
     html += '</div>';
@@ -332,7 +469,10 @@ async function iniciar() {
 
   const inputItem = document.getElementById('busca-item');
   const sugestoesItem = document.getElementById('sugestoes-item');
+  let itemAtual = null;
+
   inputItem.addEventListener('input', () => {
+    itemAtual = null;
     const termo = normaliza(inputItem.value.trim());
     if (termo.length < 1) { sugestoesItem.hidden = true; return; }
     const achados = ITENS.filter(i => normaliza(i.codigo).includes(termo) || normaliza(i.descricao).includes(termo)).slice(0, 10);
@@ -346,6 +486,8 @@ async function iniciar() {
         div.innerHTML = '<span class="cod">' + i.codigo + '</span><span class="desc">' + i.descricao + '</span>';
         div.addEventListener('click', () => {
           inputItem.value = i.codigo + ' — ' + i.descricao;
+          inputNbs.value = '';
+          itemAtual = i;
           sugestoesItem.hidden = true;
           renderItem(i);
         });
@@ -356,6 +498,69 @@ async function iniciar() {
   });
   document.addEventListener('click', (e) => {
     if (!sugestoesItem.contains(e.target) && e.target !== inputItem) sugestoesItem.hidden = true;
+  });
+
+  // ---------- Autocomplete NBS ----------
+  const inputNbs = document.getElementById('busca-nbs');
+  const sugestoesNbs = document.getElementById('sugestoes-nbs');
+  let nbsLista = null;
+
+  function montarListaNbs() {
+    if (nbsLista) return nbsLista;
+    const vistos = {};
+    nbsLista = [];
+    ITENS.forEach(i => {
+      i.nbs.forEach(n => {
+        if (!vistos[n.codigo]) {
+          vistos[n.codigo] = true;
+          nbsLista.push({ codigo: n.codigo, descricao: n.descricao });
+        }
+      });
+    });
+    nbsLista.sort((a, b) => a.codigo.localeCompare(b.codigo));
+    return nbsLista;
+  }
+
+  inputNbs.addEventListener('input', () => {
+    const termo = normaliza(inputNbs.value.trim());
+    if (termo.length < 1) { sugestoesNbs.hidden = true; return; }
+    const lista = itemAtual
+      ? itemAtual.nbs.map(n => ({ codigo: n.codigo, descricao: n.descricao }))
+      : montarListaNbs();
+    const achados = lista.filter(n => normaliza(n.codigo).includes(termo) || normaliza(n.descricao).includes(termo)).slice(0, 10);
+    sugestoesNbs.innerHTML = '';
+    if (achados.length === 0) {
+      const msgVazio = itemAtual
+        ? 'Nenhum NBS desse item bate com a busca — ' + itemAtual.codigo + ' tem ' + itemAtual.nbs.length + ' NBS associados. Apague o campo "Item da LC 116" acima pra buscar entre todos os NBS.'
+        : 'Nenhum NBS encontrado';
+      sugestoesNbs.innerHTML = '<div class="vazio">' + msgVazio + '</div>';
+    } else {
+      achados.forEach(n => {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = '<span class="cod">' + n.codigo + '</span><span class="desc">' + n.descricao + '</span>';
+        div.addEventListener('click', () => {
+          inputNbs.value = n.codigo + ' — ' + n.descricao;
+          sugestoesNbs.hidden = true;
+          if (itemAtual) {
+            renderItem(itemAtual);
+            const idx = itemAtual.nbs.findIndex(x => x.codigo === n.codigo);
+            const cabecalho = document.querySelector('.nbs-cabecalho[data-idx="' + idx + '"]');
+            const detalhe = document.querySelector('.nbs-detalhe[data-idx="' + idx + '"]');
+            if (detalhe) detalhe.classList.add('aberto');
+            if (cabecalho) cabecalho.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          } else {
+            inputItem.value = '';
+            renderNbs(n.codigo, n.descricao);
+          }
+        });
+        sugestoesNbs.appendChild(div);
+      });
+    }
+    sugestoesNbs.hidden = false;
+  });
+  document.addEventListener('click', (e) => {
+    if (!sugestoesNbs.contains(e.target) && e.target !== inputNbs) sugestoesNbs.hidden = true;
   });
 
   const botaoCst = document.getElementById('botao-cst');
@@ -374,6 +579,35 @@ async function iniciar() {
     }
     painelCst.hidden = !abrindo;
     botaoCst.textContent = abrindo ? 'Esconder tabela de CST' : 'Ver tabela de CST (IBS/CBS)';
+  });
+
+  const botaoRegimes = document.getElementById('botao-regimes');
+  const painelRegimes = document.getElementById('painel-regimes');
+  botaoRegimes.addEventListener('click', () => {
+    const abrindo = painelRegimes.hidden;
+    if (abrindo && !painelRegimes.dataset.montado) {
+      const todos = Object.keys(FUNDAMENTACAO).filter(cod => FUNDAMENTACAO[cod].operacional.exigeDesoneracao);
+      const doNfse = todos.filter(cod => FUNDAMENTACAO[cod].operacional.tiposDfe.includes('NFS-e'));
+      const outros = todos.filter(cod => !FUNDAMENTACAO[cod].operacional.tiposDfe.includes('NFS-e'));
+
+      let html = '<p style="font-size:12.5px;color:var(--ink-muted);margin:0 0 12px;">Regra oficial (código-fonte da calculadora): sempre que a classificação tributária tem a flag <code>exigeGrupoDesoneracao</code>, o XML é obrigado a informar <code>gTribRegular</code> — sem isso, a calculadora rejeita com "tributação regular não informada". De ' + Object.keys(FUNDAMENTACAO).length + ' classificações catalogadas, ' + todos.length + ' exigem — e dessas, só <strong>' + doNfse.length + '</strong> se aplicam a NFS-e (as demais são de NF-e/importação de mercadorias).</p>';
+
+      html += '<h4 style="font-size:11px;text-transform:uppercase;color:var(--ink-muted);margin:0 0 6px;">Se aplicam a NFS-e</h4>';
+      html += '<table><thead><tr><th>cClassTrib</th><th>Fundamento</th><th>Tratamento</th></tr></thead><tbody>';
+      doNfse.forEach(cod => {
+        const f = FUNDAMENTACAO[cod];
+        html += '<tr><td class="cod">' + cod + '</td><td>' + f.textoCurto + '</td><td>' + f.operacional.tratamento + '</td></tr>';
+      });
+      html += '</tbody></table>';
+
+      html += '<h4 style="font-size:11px;text-transform:uppercase;color:var(--ink-muted);margin:14px 0 6px;">Não se aplicam a NFS-e (mercadorias/importação — ' + outros.length + ' códigos)</h4>';
+      html += '<p style="font-size:12px;color:var(--ink-muted);margin:0;">' + outros.map(cod => cod + ' (' + FUNDAMENTACAO[cod].operacional.tratamento + ')').join('; ') + '.</p>';
+
+      painelRegimes.innerHTML = html;
+      painelRegimes.dataset.montado = '1';
+    }
+    painelRegimes.hidden = !abrindo;
+    botaoRegimes.textContent = abrindo ? 'Esconder regimes especiais' : 'Ver regimes especiais que exigem tributação regular';
   });
 
   document.getElementById('arquivo-xml').addEventListener('change', (e) => {

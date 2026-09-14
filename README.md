@@ -38,6 +38,18 @@ nacional) e a ferramenta confere:
 - Gera um payload de teste com os valores reais do XML, pronto para
   conferir na calculadora oficial
 
+**Simples Nacional** — referência das 15 atividades oficiais e o(s)
+Anexo(s) de apuração aplicável(is). Consulta independente da busca por
+Item/NBS: a atividade é característica do optante, não do serviço de
+cada nota.
+
+**Importante:** o payload de teste (nas duas primeiras abas) foi
+**testado rodando a calculadora oficial de verdade** (JAR + banco
+SQLite reais) contra uma NFS-e real — confirmou suspensão REIDI
+corretamente aplicada, com IBS/CBS zerados e o valor "regular" por trás
+calculado certo. Ainda assim, o validador confere só a *coerência
+estrutural* dos campos — não calcula nem confirma valores de IBS/CBS.
+
 **Importante:** o validador confere a *coerência estrutural* dos campos
 — não calcula nem confirma se o valor de IBS/CBS destacado na nota está
 certo. Isso só a calculadora oficial da Receita (rodando com as
@@ -84,17 +96,75 @@ Pages retorna 404 por não achar o `index.html` na raiz.
   registro oficial de classificações tributárias e fundamentações
   legais da Reforma Tributária.
 
+## Mapeamento de regimes especiais (tributação regular obrigatória)
+
+Achamos no código-fonte da calculadora a regra exata de quando o XML é
+obrigado a informar `gTribRegular`: quando a classificação principal tem a
+flag `exigeGrupoDesoneracao = true` (já está nos nossos dados). De 109
+classificações relevantes para IBS/CBS, 27 exigem — mas só **2 se aplicam a
+NFS-e** (REIDI e Rehidro; as outras 25 são de mercadorias/importação). Novo
+link "Ver regimes especiais que exigem tributação regular" mostra essa lista
+completa. O validador de XML agora usa essa regra com precisão (antes era só
+um aviso baseado em "se veio gTribRegular, deve ser regime especial") e
+também confere se a classificação regular informada não é ela mesma
+incompatível com suspensão.
+
+## Estimativa de alíquota efetiva (2026)
+
+Cada classificação mostra uma estimativa de alíquota efetiva (CBS /
+IBS-UF / IBS-Mun) = **alíquota de referência × (1 − redução)** — a
+fórmula do ano-teste 2026, quando só existe a alíquota de referência
+nacional e ainda não há alíquotas por UF/Município. Validada rodando a
+calculadora oficial de verdade contra uma nota real — bateu ao centavo.
+
+Só calculado para tipos "Padrão", "Uniforme nacional (referência)" e
+"Sem alíquota" (96 dos 109 códigos). Pros outros 13 (Fixa, Uniforme
+setorial, Combinadas), a ferramenta avisa que não estima — essas
+fórmulas exigiriam o motor completo, e prefiro não arriscar um número
+errado.
+
+**Não substitui a calculadora oficial** — é uma estimativa só pra 2026;
+a partir de 2027 o mecanismo muda.
+
+## Payload conferido contra o código-fonte oficial
+
+O payload de teste foi conferido contra o **código-fonte real da
+calculadora oficial** (pacote `br.gov.serpro.rtc`, SERPRO):
+
+- O campo `nbs` é confirmado no schema oficial, não uma adaptação.
+- `dataHoraEmissao` está obsoleto — o campo correto é `dhFatoGerador`.
+- Adicionado `tpDoc: 91` (NFS-e), campo que a API usa pra saber qual
+  nomenclatura (NCM/NBS) exigir.
+- **A partir de 01/01/2027, `aliquotasNominais` (cbs, ibsEstadual,
+  ibsMunicipal) passa a ser obrigatório** — o validador de XML detecta
+  a data do fato gerador e inclui esse campo automaticamente quando
+  necessário.
+- A calculadora expõe endpoints de referência de alíquota
+  (`/aliquota-uniao`, `/aliquota-uf`, `/aliquota-municipio`), mas
+  mesmo eles retornam aviso de "dados simulados" dependendo da data —
+  as alíquotas definitivas ainda estão em calibração nesse período de
+  transição.
+- **Testado rodando a calculadora oficial de verdade** (JAR + banco
+  SQLite reais) contra uma NFS-e real com suspensão REIDI: devolveu
+  IBS/CBS zerados corretamente e o valor "regular" por trás calculado
+  certo — confirmando que a lógica de geração do payload está certa.
+
 ## Fonte e manutenção
 
-- Dados extraídos do arquivo oficial "Anexo VIII — correlação item NBS
-  INDOP cClassTrib (IBS/CBS)", v1.01.00.
-- A tabela de CST (nomes e finalidades) foi cadastrada manualmente a
-  partir da tabela oficial de CSTs da Reforma Tributária.
-- Fundamentação legal e detalhes operacionais: 161 códigos cClassTrib
-  cadastrados, cobrindo os 27 usados nas correlações do Anexo VIII.
-- Se a Receita publicar uma nova versão de qualquer uma dessas fontes,
-  os arquivos em `data/` precisam ser regenerados a partir dos dados
-  novos.
+- Todos os dados (itens da LC 116, NBS, cenários de INDOP,
+  classificações tributárias, CST, fundamentação legal) foram
+  **reconstruídos direto do banco SQLite oficial da calculadora**
+  (`calculadora-pro.db`), a mesma fonte que a calculadora usa
+  internamente — não mais de planilhas/exports intermediários.
+  Usa a versão de dados vigente a partir de 01/10/2026.
+- CST e cClassTrib **não são globalmente únicos** no banco — o mesmo
+  código pode ter significados diferentes por tributo (ex.: dois
+  "cClassTrib 000001", um pra IBS/CBS e outro pra Imposto Seletivo).
+  A extração usa sempre o vínculo por ID, nunca por código de texto.
+- Simples Nacional: as 15 atividades e seus Anexos de apuração também
+  vêm direto do banco oficial.
+- Se a Receita publicar uma nova versão da base, os arquivos em
+  `data/` precisam ser regenerados a partir do banco novo.
 
 ## Licença
 
